@@ -55,6 +55,38 @@ class Transacao(Base):
         return f"<Transacao {self.tipo} R${self.valor:.2f}>"
 
 
+class PlanoDivida(Base):
+    __tablename__ = "planos_divida"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    usuario_id = Column(String(36), ForeignKey("usuarios.id"), nullable=False, index=True)
+    familia_id = Column(String(36), ForeignKey("familias.id"), nullable=False, index=True)
+    credor = Column(String(100), nullable=False)
+    descricao = Column(String(255), default="")
+    valor_total = Column(Float, nullable=False)
+    numero_parcelas = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<PlanoDivida {self.credor} R${self.valor_total:.2f}>"
+
+
+class ParcelaDivida(Base):
+    __tablename__ = "parcelas_divida"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    plano_divida_id = Column(String(36), ForeignKey("planos_divida.id"), nullable=False, index=True)
+    numero = Column(Integer, nullable=False)
+    valor = Column(Float, nullable=False)
+    data_vencimento = Column(Date, nullable=False, index=True)
+    paga = Column(Boolean, default=False)
+    transacao_id = Column(String(36), ForeignKey("transacoes.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Parcela {self.numero}/{self.plano_divida_id} {'PAGA' if self.paga else 'PENDENTE'}>"
+
+
 class MetasOrcamento(Base):
     __tablename__ = "metas_orcamento"
 

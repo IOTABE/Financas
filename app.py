@@ -15,6 +15,15 @@ from business import (
     transacoes_recentes_familia,
     despesas_por_categoria,
     gastos_por_membro,
+    criar_plano_divida,
+    listar_planos_familia,
+    parcelas_do_plano,
+    pagar_parcela,
+    editar_plano_divida,
+    editar_parcela,
+    deletar_plano_divida,
+    total_parcelas_pendentes_mes,
+    evolucao_parcelas_pendentes,
 )
 
 # ---------------------------------------------------------------------------
@@ -433,6 +442,41 @@ def pagina_dashboard():
             )
 
     st.markdown("---")
+    st.subheader("💳 Dívidas — Previsão de Pagamentos")
+
+    pendente_mes = total_parcelas_pendentes_mes(familia_id, mes, ano)
+    col_pend, col_info = st.columns([1, 3])
+    col_pend.metric(
+        "Parcelas a pagar neste mês",
+        f"R$ {pendente_mes:,.2f}" if pendente_mes > 0 else "Nenhuma",
+        delta=None,
+    )
+
+    evolucao = evolucao_parcelas_pendentes(familia_id)
+    if evolucao:
+        df_evol = pd.DataFrame(evolucao)
+        df_evol["Mês"] = df_evol.apply(
+            lambda r: f"{int(r['mes']):02d}/{int(r['ano'])}", axis=1
+        )
+        df_evol["Total (R$)"] = df_evol["total"]
+
+        fig5 = px.bar(
+            df_evol, x="Mês", y="Total (R$)",
+            title="Evolução das Parcelas Pendentes",
+            text_auto=".2f",
+            color_discrete_sequence=["#ffa600"],
+        )
+        fig5.update_layout(
+            height=350,
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font_color="#f0f0f0" if st.session_state["dark_mode"] else "#111111",
+        )
+        st.plotly_chart(fig5, width='stretch')
+    else:
+        st.info("🎉 Nenhuma parcela pendente no planejamento de dívidas.")
+
+    st.markdown("---")
     st.subheader("📜 Últimas Transações")
     transacoes = transacoes_recentes_familia(familia_id, 20)
     if transacoes:
@@ -481,7 +525,7 @@ def modal_nova_transacao():
         categorias_despesa = [
             "Alimentação", "Moradia", "Transporte",
             "Saúde", "Educação", "Lazer", "Vestuário",
-            "Assinaturas", "Utilidades", "Outros"
+            "Assinaturas", "Utilidades", "Dívidas", "Outros"
         ]
 
         lin1, lin2 = st.columns(2)
@@ -587,6 +631,54 @@ def modal_definir_meta():
                 st.error(f"Erro ao salvar meta: {e}")
 
 
+@st.dialog("Editar Meta")
+def modal_editar_meta(usuario_id: str, mes: int, ano: int):
+    from business import buscar_meta_objeto
+
+    meta_obj = buscar_meta_objeto(usuario_id, mes, ano)
+    if not meta_obj:
+        st.error("Meta não encontrada para este usuário/mês.")
+        return
+
+    familia_id = st.session_state["familia_id"]
+    membros = listar_membros_familia(familia_id)
+    membro_opts = {m.id: m.nome for m in membros}
+    nome_membro = membro_opts.get(usuario_id, "—")
+
+    with st.form("editar_meta_form"):
+        st.markdown(f"**Membro:** {nome_membro}")
+        st.markdown(f"**Período:** {mes:02d}/{ano}")
+        st.caption("Limite global de gastos (sem categoria específica)")
+
+        valor_limite = st.number_input(
+            "Valor (R$)",
+            min_value=0.01,
+            step=50.0,
+            format="%.2f",
+            value=round(meta_obj.valor_limite, 2),
+        )
+
+        st.markdown("---")
+
+        if st.form_submit_button("Salvar Alterações", width='stretch'):
+            try:
+                definir_meta(
+                    usuario_id=usuario_id,
+                    familia_id=familia_id,
+                    valor_limite=valor_limite,
+                    mes=mes,
+                    ano=ano,
+                    categoria=None,
+                )
+                st.success(
+                    f"✅ Meta atualizada para **R$ {valor_limite:,.2f}** "
+                    f"({nome_membro} — {mes:02d}/{ano})."
+                )
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao salvar meta: {e}")
+
+
 def pagina_metas():
     st.title("🎯 Metas de Orçamento")
 
@@ -624,13 +716,275 @@ def pagina_metas():
             "Limite (R$)": f"R$ {lm:,.2f}" if lm else "—",
             "Gasto Atual (R$)": f"R$ {gt:,.2f}",
             "Status": "🔴 BLOQUEADO" if (lm and gt >= lm) else "🟢 OK",
+            "id": m.id,
         })
 
-    st.dataframe(pd.DataFrame(data_rows), width='stretch', hide_index=True)
+    df_metas = pd.DataFrame(data_rows)
+
+    for _, row in df_metas.iterrows():
+        c1, c2, c3, c4, c5, c6 = st.columns([2, 1, 1.5, 1.5, 1.5, 0.7])
+        c1.markdown(f"**{row['Membro']}**")
+        c2.markdown(row["Admin"])
+        c3.markdown(row["Limite (R$)"])
+        c4.markdown(row["Gasto Atual (R$)"])
+        c5.markdown(row["Status"])
+        tem_meta = row["Limite (R$)"] != "—"
+        if tem_meta:
+            c6.button(
+                "✏️", key=f"edit_meta_{row['id']}",
+                help="Editar meta",
+                on_click=modal_editar_meta,
+                args=(row["id"], hoje.month, hoje.year),
+            )
+        else:
+            c6.markdown("—")
 
 
 # ---------------------------------------------------------------------------
-# 4. Sidebar e roteamento
+# 4. Dívidas
+# ---------------------------------------------------------------------------
+
+
+@st.dialog("Novo Plano de Dívida")
+def modal_novo_plano_divida():
+    familia_id = st.session_state["familia_id"]
+    membros = listar_membros_familia(familia_id)
+
+    if not membros:
+        st.info("Nenhum membro encontrado.")
+        return
+
+    hoje = date.today()
+
+    with st.form("plano_divida_form"):
+        membro_opts = {m.nome: m for m in membros}
+        membro_selecionado = st.selectbox("Responsável pela dívida", list(membro_opts.keys()))
+        usuario_alvo = membro_opts[membro_selecionado]
+
+        credor = st.text_input("Credor", placeholder="Ex: Banco do Brasil, Cartão de Crédito")
+        descricao = st.text_input("Descrição (opcional)", placeholder="Ex: Financiamento veículo")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            valor_total = st.number_input("Valor total (R$)", min_value=0.01, step=100.0, format="%.2f")
+        with col2:
+            num_parcelas = st.number_input("Número de parcelas", min_value=1, max_value=120, value=12, step=1)
+
+        data_primeira = st.date_input("Data da primeira parcela", value=date(hoje.year, hoje.month, 1), format="DD/MM/YYYY")
+
+        st.markdown("---")
+
+        if st.form_submit_button("Criar Plano", width='stretch'):
+            if not credor.strip():
+                st.warning("Informe o credor.")
+            else:
+                try:
+                    criar_plano_divida(
+                        usuario_id=usuario_alvo.id,
+                        familia_id=familia_id,
+                        credor=credor,
+                        valor_total=valor_total,
+                        numero_parcelas=num_parcelas,
+                        descricao=descricao,
+                        data_primeira_parcela=data_primeira,
+                    )
+                    st.success(f"✅ Plano de {num_parcelas}x de R$ {valor_total/num_parcelas:,.2f} criado!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao criar plano: {e}")
+
+
+@st.dialog("Editar Plano de Dívida")
+def modal_editar_plano_divida(plano_id: str):
+    from business import editar_plano_divida as editar_plano
+    planos = listar_planos_familia(st.session_state["familia_id"])
+    plano = next((p for p in planos if p.id == plano_id), None)
+    if not plano:
+        st.error("Plano não encontrado.")
+        return
+
+    parcelas = parcelas_do_plano(plano_id)
+
+    with st.form("editar_plano_form"):
+        credor = st.text_input("Credor", value=plano.credor)
+        descricao = st.text_input("Descrição", value=plano.descricao)
+
+        st.markdown("---")
+        st.markdown("### Parcelas")
+
+        edits = []
+        for p in parcelas:
+            disabled = p.paga
+            if disabled:
+                st.markdown(f"**Parcela {p.numero}** — ✅ Paga — R$ {p.valor:,.2f}")
+            else:
+                c1, c2 = st.columns(2)
+                with c1:
+                    val = st.number_input(
+                        f"Parcela {p.numero} — Valor (R$)",
+                        value=round(p.valor, 2),
+                        min_value=0.01,
+                        step=10.0,
+                        format="%.2f",
+                        key=f"edit_val_{p.id}",
+                    )
+                with c2:
+                    dt = st.date_input(
+                        f"Parcela {p.numero} — Vencimento",
+                        value=p.data_vencimento,
+                        format="DD/MM/YYYY",
+                        key=f"edit_dt_{p.id}",
+                    )
+                edits.append((p.id, val, dt))
+
+        st.markdown("---")
+
+        if st.form_submit_button("Salvar Alterações", width='stretch'):
+            try:
+                editar_plano(plano_id, credor, descricao)
+                for pid, val, dt in edits:
+                    editar_parcela(pid, val, dt)
+                st.success("✅ Plano atualizado!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao editar: {e}")
+
+
+@st.dialog("Excluir Plano de Dívida")
+def modal_excluir_plano_divida(plano_id: str):
+    planos = listar_planos_familia(st.session_state["familia_id"])
+    plano = next((p for p in planos if p.id == plano_id), None)
+    if not plano:
+        st.error("Plano não encontrado.")
+        return
+
+    parcelas = parcelas_do_plano(plano_id)
+    pagas = sum(1 for p in parcelas if p.paga)
+
+    st.warning(
+        f"Tem certeza que deseja excluir o plano **{plano.credor}** "
+        f"(R$ {plano.valor_total:,.2f})?"
+    )
+    if pagas > 0:
+        st.info(
+            f"ℹ️ {pagas} parcela(s) já foi/foram paga(s). "
+            "As transações financeiras geradas **não** serão removidas."
+        )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("✅ Sim, Excluir", width='stretch', type="primary"):
+            try:
+                deletar_plano_divida(plano_id)
+                st.success("✅ Plano excluído!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao excluir: {e}")
+    with c2:
+        if st.button("❌ Cancelar", width='stretch'):
+            st.rerun()
+
+
+def pagina_dividas():
+    st.title("💳 Planejamento de Dívidas")
+
+    familia_id = st.session_state["familia_id"]
+
+    col_titulo, col_btn = st.columns([3, 1])
+    with col_titulo:
+        st.markdown("### Planos Ativos")
+    with col_btn:
+        st.markdown("<div style='padding-top: 6px;'>", unsafe_allow_html=True)
+        if st.button("➕ Novo Plano", width='stretch', type="primary"):
+            modal_novo_plano_divida()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    planos = listar_planos_familia(familia_id)
+
+    if not planos:
+        st.info("Nenhum plano de dívida cadastrado.")
+        return
+
+    membros_map = {m.id: m.nome for m in listar_membros_familia(familia_id)}
+
+    for plano in planos:
+        parcelas = parcelas_do_plano(plano.id)
+        total_pagas = sum(1 for p in parcelas if p.paga)
+        total_pendentes = len(parcelas) - total_pagas
+        valor_pago = sum(p.valor for p in parcelas if p.paga)
+        valor_pendente = sum(p.valor for p in parcelas if not p.paga)
+        progresso = total_pagas / len(parcelas) if parcelas else 0
+
+        with st.expander(
+            f"**{plano.credor}** — R$ {plano.valor_total:,.2f} — "
+            f"{total_pagas}/{len(parcelas)} parcelas pagas",
+            expanded=(total_pendentes > 0),
+        ):
+            cols = st.columns([2, 1, 1, 1, 1, 1, 1])
+            cols[0].markdown(f"**Descrição:** {plano.descricao or '—'}")
+            cols[1].markdown(f"**Responsável:** {membros_map.get(plano.usuario_id, '—')}")
+            cols[2].markdown(f"**Pendente:** R$ {valor_pendente:,.2f}")
+            cols[3].markdown(f"**Pago:** R$ {valor_pago:,.2f}")
+            cols[4].markdown(f"**Progresso:** {progresso:.0%}")
+            cols[5].button("✏️", key=f"edit_{plano.id}", help="Editar",
+                           on_click=modal_editar_plano_divida, args=(plano.id,))
+            cols[6].button("🗑️", key=f"del_{plano.id}", help="Excluir",
+                           on_click=modal_excluir_plano_divida, args=(plano.id,))
+
+            st.progress(progresso)
+
+            if parcelas:
+                st.markdown("#### Parcelas")
+                rows = []
+                hoje = date.today()
+                for p in parcelas:
+                    venc = p.data_vencimento
+                    status = "✅ Paga" if p.paga else (
+                        "🔴 Vencida" if venc < hoje else "🟡 A vencer"
+                    )
+                    rows.append({
+                        "Parcela": f"{p.numero}/{len(parcelas)}",
+                        "Vencimento": venc.strftime("%d/%m/%Y"),
+                        "Valor": f"R$ {p.valor:,.2f}",
+                        "Status": status,
+                    })
+
+                df_parcelas = pd.DataFrame(rows)
+
+                col_table, col_action = st.columns([3, 1])
+                with col_table:
+                    st.dataframe(df_parcelas, width='stretch', hide_index=True)
+                with col_action:
+                    pendentes = [p for p in parcelas if not p.paga]
+                    if pendentes:
+                        prox = pendentes[0]
+                        st.markdown("##### Próxima parcela")
+                        st.markdown(
+                            f"**{prox.numero}/{len(parcelas)}** — "
+                            f"R$ {prox.valor:,.2f}"
+                        )
+                        if st.button(
+                            f"💳 Pagar Parcela {prox.numero}",
+                            key=f"pay_{prox.id}",
+                            width='stretch',
+                            type="primary",
+                        ):
+                            try:
+                                pagar_parcela(
+                                    parcela_id=prox.id,
+                                    usuario_id=st.session_state["user_id"],
+                                    familia_id=familia_id,
+                                )
+                                st.success(f"✅ Parcela {prox.numero} paga!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Erro ao pagar: {e}")
+                    else:
+                        st.success("🎉 Todas as parcelas pagas!")
+
+
+# ---------------------------------------------------------------------------
+# 5. Sidebar e roteamento
 # ---------------------------------------------------------------------------
 
 def sidebar():
@@ -648,6 +1002,11 @@ def sidebar():
 
         if st.button("💰 Nova Transação", width='stretch', type="secondary"):
             modal_nova_transacao()
+
+        if st.button("💳 Dívidas", width='stretch',
+                     type="primary" if st.session_state["page"] == "dividas" else "secondary"):
+            st.session_state["page"] = "dividas"
+            st.rerun()
 
         if is_admin:
             if st.button("🎯 Metas", width='stretch',
@@ -685,5 +1044,7 @@ else:
     page = st.session_state["page"]
     if page == "dashboard":
         pagina_dashboard()
+    elif page == "dividas":
+        pagina_dividas()
     elif page == "metas":
         pagina_metas()
