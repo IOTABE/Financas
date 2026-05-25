@@ -12,9 +12,8 @@ from business import (
     saldo_familiar,
     listar_membros_familia,
     definir_meta,
-    transacoes_recentes_familia,
     despesas_por_categoria,
-    gastos_por_membro,
+    transacoes_recentes_familia,
     criar_plano_divida,
     listar_planos_familia,
     parcelas_do_plano,
@@ -25,6 +24,19 @@ from business import (
     total_parcelas_pendentes_mes,
     evolucao_parcelas_pendentes,
 )
+
+def render_html_table(df, class_name="data-table"):
+    parts = [f'<table class="{class_name}"><thead><tr>']
+    for col in df.columns:
+        parts.append(f"<th>{col}</th>")
+    parts.append("</tr></thead><tbody>")
+    for _, row in df.iterrows():
+        parts.append("<tr>")
+        for val in row:
+            parts.append(f"<td>{val}</td>")
+        parts.append("</tr>")
+    parts.append("</tbody></table>")
+    return "".join(parts)
 
 # ---------------------------------------------------------------------------
 # 1. Config inicial
@@ -162,8 +174,74 @@ DARK_CSS = MODAL_CSS + """
     .stSelectbox>div>div>div { background-color: #262730; color: #f0f0f0; border-color: #3c3c3c; }
     .st-bb { background-color: #262730 !important; }
     .stButton>button { background-color: #ff4b4b; color: #fff; border: none; }
-    .stAlert { background-color: #3d1f1f !important; border: 1px solid #ff4b4b !important; color: #ffcccc !important; }
-    div[data-testid="stMetric"] { background-color: #262730; padding: 12px; border-radius: 8px; }
+    div[data-testid="stFormSubmitButton"] > button { background-color: #0068c9 !important; border: none !important; }
+    div[data-testid="stFormSubmitButton"] > button, div[data-testid="stFormSubmitButton"] > button * { color: #ffffff !important; }
+    div[data-testid="stFormSubmitButton"] > button:hover { background-color: #0056a3 !important; }
+    .stAlert { background-color: #262730 !important; border: 1px solid #3c3c3c !important; color: #e0e0e0 !important; }
+    div[data-testid="stMetric"] { background-color: #262730; padding: 12px; border-radius: 8px; border: 1px solid #3c3c3c; }
+    div[data-testid="stDataFrame"] {
+        background-color: #262730 !important;
+    }
+    div[data-testid="stDataFrame"] thead th {
+        background-color: #1b1f2a !important;
+        color: #f0f0f0 !important;
+        border-bottom: 1px solid #3c3c3c !important;
+    }
+    div[data-testid="stDataFrame"] tbody td {
+        background-color: #262730 !important;
+        color: #e0e0e0 !important;
+        border-bottom: 1px solid #333 !important;
+    }
+    div[data-testid="stDataFrame"] tbody tr:nth-child(even) td {
+        background-color: #2a2d37 !important;
+    }
+    div[data-testid="stDataFrame"] * {
+        color: #e0e0e0 !important;
+    }
+    table.data-table {
+        width: 100%;
+        border-collapse: collapse;
+        background-color: #262730 !important;
+    }
+    table.data-table th {
+        background-color: #1b1f2a !important;
+        color: #f0f0f0 !important;
+        padding: 8px 12px;
+        text-align: left;
+        border-bottom: 1px solid #3c3c3c;
+    }
+    table.data-table td {
+        background-color: #262730 !important;
+        color: #e0e0e0 !important;
+        padding: 8px 12px;
+        border-bottom: 1px solid #333;
+    }
+    table.data-table tbody tr:nth-child(even) td {
+        background-color: #2a2d37 !important;
+    }
+    div[data-testid="stProgress"] > div {
+        background-color: #3c3c3c !important;
+    }
+    div[data-testid="stExpander"] details {
+        background-color: #262730 !important;
+        border: 1px solid #3c3c3c !important;
+        border-radius: 8px !important;
+    }
+    div[data-testid="stExpander"] details div {
+        background-color: #262730 !important;
+    }
+    div[data-testid="stExpander"] summary {
+        color: #f0f0f0 !important;
+    }
+    button[data-testid="stDialogCloseButton"] svg {
+        fill: #f0f0f0 !important;
+    }
+    input::placeholder, textarea::placeholder {
+        color: #888 !important;
+    }
+    .stCaption {
+        color: #aaaaaa !important;
+    }
     .block-container { padding-top: 2rem; }
     h1 { border-bottom: 1px solid #3c3c3c; padding-bottom: 0.5rem; }
     section[data-testid="stSidebar"] hr { border-color: #3c3c3c; }
@@ -172,6 +250,18 @@ DARK_CSS = MODAL_CSS + """
     div[data-testid="stDialog"] > div {
         background-color: #1b1f2a !important;
         border: 1px solid #333 !important;
+    }
+    div[data-testid="stDialog"] > div > div {
+        background-color: #1b1f2a !important;
+    }
+    div[data-testid="stDialog"] div[data-testid="stVerticalBlock"] {
+        background: transparent !important;
+    }
+    div[data-testid="stDialog"] div[data-testid="column"] {
+        background: transparent !important;
+    }
+    div[data-testid="stDialog"] [data-testid="stForm"] {
+        background-color: #1b1f2a !important;
     }
     div[data-testid="stDialog"] input,
     div[data-testid="stDialog"] select,
@@ -192,6 +282,11 @@ DARK_CSS = MODAL_CSS + """
     div[data-testid="stDialog"] .stCaption {
         color: #cccccc !important;
     }
+    div[data-testid="stDialog"] .stNumberInput button {
+        background-color: #262730 !important;
+        color: #f0f0f0 !important;
+        border-color: #3c3c3c !important;
+    }
 </style>
 """
 
@@ -208,8 +303,80 @@ LIGHT_CSS = MODAL_CSS + """
     .stSelectbox>div>div>div { background-color: #ffffff; color: #111111; border-color: #d0d0d0; }
     .st-bb { background-color: #ffffff !important; }
     .stButton>button { background-color: #ff4b4b; color: #fff; border: none; }
-    .stAlert { background-color: #fff0f0 !important; border: 1px solid #ff4b4b !important; color: #cc0000 !important; }
+    div[data-testid="stFormSubmitButton"] > button { background-color: #0068c9 !important; border: none !important; }
+    div[data-testid="stFormSubmitButton"] > button, div[data-testid="stFormSubmitButton"] > button * { color: #ffffff !important; }
+    div[data-testid="stFormSubmitButton"] > button:hover { background-color: #0056a3 !important; }
+    .stAlert { background-color: #f8f9fa !important; border: 1px solid #e0e0e0 !important; color: #111111 !important; }
     div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 12px; border-radius: 8px; border: 1px solid #e0e0e0; }
+    div[data-testid="stDataFrame"] {
+        background-color: #ffffff !important;
+    }
+    div[data-testid="stDataFrame"] thead th {
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        border-bottom: 1px solid #e0e0e0 !important;
+    }
+    div[data-testid="stDataFrame"] tbody td {
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        border-bottom: 1px solid #f0f0f0 !important;
+    }
+    div[data-testid="stDataFrame"] tbody tr:nth-child(even) td {
+        background-color: #f8f9fa !important;
+    }
+    div[data-testid="stDataFrame"] * {
+        color: #111111 !important;
+    }
+    table.data-table {
+        width: 100%;
+        border-collapse: collapse;
+        background-color: #ffffff !important;
+    }
+    table.data-table th {
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        padding: 8px 12px;
+        text-align: left;
+        border-bottom: 1px solid #e0e0e0;
+        font-weight: 600;
+    }
+    table.data-table td {
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        padding: 8px 12px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    table.data-table tbody tr:nth-child(even) td {
+        background-color: #f8f9fa !important;
+    }
+    div[data-testid="stProgress"] > div {
+        background-color: #e0e0e0 !important;
+    }
+    div[data-testid="stDataFrame"] tbody td {
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        border-bottom: 1px solid #f0f0f0 !important;
+    }
+    div[data-testid="stDataFrame"] tbody tr:nth-child(even) td {
+        background-color: #f8f9fa !important;
+    }
+    div[data-testid="stProgress"] > div {
+        background-color: #e0e0e0 !important;
+    }
+    div[data-testid="stExpander"] details {
+        background-color: #ffffff !important;
+        border: 1px solid #e0e0e0 !important;
+        border-radius: 8px !important;
+    }
+    div[data-testid="stExpander"] details div {
+        background-color: #ffffff !important;
+    }
+    div[data-testid="stExpander"] summary {
+        color: #111111 !important;
+    }
+    button[data-testid="stDialogCloseButton"] svg {
+        fill: #555555 !important;
+    }
     .block-container { padding-top: 2rem; }
     h1 { border-bottom: 1px solid #e0e0e0; padding-bottom: 0.5rem; }
     section[data-testid="stSidebar"] hr { border-color: #d0d0d0; }
@@ -218,6 +385,18 @@ LIGHT_CSS = MODAL_CSS + """
     div[data-testid="stDialog"] > div {
         background-color: #ffffff !important;
         border: 1px solid rgba(0,0,0,0.08) !important;
+    }
+    div[data-testid="stDialog"] > div > div {
+        background-color: #ffffff !important;
+    }
+    div[data-testid="stDialog"] div[data-testid="stVerticalBlock"] {
+        background: transparent !important;
+    }
+    div[data-testid="stDialog"] div[data-testid="column"] {
+        background: transparent !important;
+    }
+    div[data-testid="stDialog"] [data-testid="stForm"] {
+        background-color: #ffffff !important;
     }
     div[data-testid="stDialog"] input,
     div[data-testid="stDialog"] select,
@@ -238,8 +417,14 @@ LIGHT_CSS = MODAL_CSS + """
     div[data-testid="stDialog"] .stCaption {
         color: #555555 !important;
     }
+    div[data-testid="stDialog"] .stNumberInput button {
+        background-color: #ffffff !important;
+        color: #555555 !important;
+        border: 1px solid #d0d0d0 !important;
+    }
 </style>
 """
+
 
 
 def aplicar_tema():
@@ -348,11 +533,14 @@ def pagina_dashboard():
             color_discrete_map=cores, text_auto=".2f",
             title="Receitas vs Despesas — Total Familiar",
         )
+        grid_c = "#3c3c3c" if st.session_state["dark_mode"] else "#e0e0e0"
         fig1.update_layout(
             showlegend=False, height=400,
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             font_color="#f0f0f0" if st.session_state["dark_mode"] else "#111111",
+            xaxis=dict(gridcolor=grid_c, zerolinecolor=grid_c),
+            yaxis=dict(gridcolor=grid_c, zerolinecolor=grid_c),
         )
         st.plotly_chart(fig1, width='stretch')
 
@@ -400,11 +588,14 @@ def pagina_dashboard():
             color_discrete_map={"receita": "#00cc96", "gasto": "#ff4b4b"},
             text_auto=".2f",
         )
+        grid_c = "#3c3c3c" if st.session_state["dark_mode"] else "#e0e0e0"
         fig3.update_layout(
             height=400, legend_title_text="Tipo",
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             font_color="#f0f0f0" if st.session_state["dark_mode"] else "#111111",
+            xaxis=dict(gridcolor=grid_c, zerolinecolor=grid_c),
+            yaxis=dict(gridcolor=grid_c, zerolinecolor=grid_c),
         )
         st.plotly_chart(fig3, width='stretch')
 
@@ -417,6 +608,7 @@ def pagina_dashboard():
                 text=[f"R$ {row['gasto']:,.2f}", f"R$ {row['meta']:,.2f}"],
                 textposition="outside",
             ))
+        grid_c = "#3c3c3c" if st.session_state["dark_mode"] else "#e0e0e0"
         fig4.update_layout(
             barmode="group",
             title="Gasto vs Meta por Membro",
@@ -424,6 +616,8 @@ def pagina_dashboard():
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             font_color="#f0f0f0" if st.session_state["dark_mode"] else "#111111",
+            xaxis=dict(gridcolor=grid_c, zerolinecolor=grid_c),
+            yaxis=dict(gridcolor=grid_c, zerolinecolor=grid_c),
         )
         st.plotly_chart(fig4, width='stretch')
 
@@ -466,11 +660,14 @@ def pagina_dashboard():
             text_auto=".2f",
             color_discrete_sequence=["#ffa600"],
         )
+        grid_c = "#3c3c3c" if st.session_state["dark_mode"] else "#e0e0e0"
         fig5.update_layout(
             height=350,
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             font_color="#f0f0f0" if st.session_state["dark_mode"] else "#111111",
+            xaxis=dict(gridcolor=grid_c, zerolinecolor=grid_c),
+            yaxis=dict(gridcolor=grid_c, zerolinecolor=grid_c),
         )
         st.plotly_chart(fig5, width='stretch')
     else:
@@ -796,7 +993,6 @@ def modal_novo_plano_divida():
 
 @st.dialog("Editar Plano de Dívida")
 def modal_editar_plano_divida(plano_id: str):
-    from business import editar_plano_divida as editar_plano
     planos = listar_planos_familia(st.session_state["familia_id"])
     plano = next((p for p in planos if p.id == plano_id), None)
     if not plano:
@@ -841,7 +1037,7 @@ def modal_editar_plano_divida(plano_id: str):
 
         if st.form_submit_button("Salvar Alterações", width='stretch'):
             try:
-                editar_plano(plano_id, credor, descricao)
+                editar_plano_divida(plano_id, credor, descricao)
                 for pid, val, dt in edits:
                     editar_parcela(pid, val, dt)
                 st.success("✅ Plano atualizado!")
@@ -953,7 +1149,7 @@ def pagina_dividas():
 
                 col_table, col_action = st.columns([3, 1])
                 with col_table:
-                    st.dataframe(df_parcelas, width='stretch', hide_index=True)
+                    st.markdown(render_html_table(df_parcelas), unsafe_allow_html=True)
                 with col_action:
                     pendentes = [p for p in parcelas if not p.paga]
                     if pendentes:
