@@ -1,7 +1,7 @@
 from datetime import date
 from sqlalchemy import extract, func
 from database import SessionLocal
-from models import Transacao, MetasOrcamento, Usuario, PlanoDivida, ParcelaDivida
+from models import Transacao, MetasOrcamento, Usuario, PlanoDivida, ParcelaDivida, CartaoCredito
 
 
 def gastos_usuario_mes(usuario_id: str, mes: int, ano: int) -> float:
@@ -125,7 +125,9 @@ def listar_membros_familia(familia_id: str) -> list:
 
 def criar_transacao(usuario_id: str, familia_id: str, tipo: str,
                     categoria: str, valor: float, data: date,
-                    descricao: str = "") -> Transacao | None:
+                    descricao: str = "",
+                    forma_pagamento: str | None = None,
+                    cartao_credito_id: str | None = None) -> Transacao | None:
     session = SessionLocal()
     try:
         transacao = Transacao(
@@ -136,6 +138,8 @@ def criar_transacao(usuario_id: str, familia_id: str, tipo: str,
             valor=valor,
             data=data,
             descricao=descricao,
+            forma_pagamento=forma_pagamento,
+            cartao_credito_id=cartao_credito_id,
         )
         session.add(transacao)
         session.commit()
@@ -143,6 +147,29 @@ def criar_transacao(usuario_id: str, familia_id: str, tipo: str,
     except Exception as e:
         session.rollback()
         raise RuntimeError(f"Erro ao criar transação: {e}") from e
+    finally:
+        session.close()
+
+
+def editar_transacao(transacao_id: str, tipo: str, categoria: str,
+                     valor: float, data: date, descricao: str = "",
+                     forma_pagamento: str | None = None) -> Transacao:
+    session = SessionLocal()
+    try:
+        t = session.query(Transacao).filter_by(id=transacao_id).first()
+        if not t:
+            raise ValueError("Transação não encontrada.")
+        t.tipo = tipo
+        t.categoria = categoria
+        t.valor = valor
+        t.data = data
+        t.descricao = descricao
+        t.forma_pagamento = forma_pagamento
+        session.commit()
+        return t
+    except Exception as e:
+        session.rollback()
+        raise RuntimeError(f"Erro ao editar transação: {e}") from e
     finally:
         session.close()
 
@@ -451,5 +478,146 @@ def evolucao_parcelas_pendentes(familia_id: str) -> list[dict]:
         return [{"ano": int(r.ano), "mes": int(r.mes), "total": float(r.total)} for r in rows]
     except Exception as e:
         raise RuntimeError(f"Erro ao calcular evolução: {e}") from e
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
+# Cartões de crédito
+# ---------------------------------------------------------------------------
+
+
+def _proximo_vencimento(dia_vencimento: int) -> date:
+    hoje = date.today()
+    try:
+        proximo = date(hoje.year, hoje.month, dia_vencimento)
+    except ValueError:
+        import calendar
+        ultimo = calendar.monthrange(hoje.year, hoje.month)[1]
+        proximo = date(hoje.year, hoje.month, min(dia_vencimento, ultimo))
+    if proximo <= hoje:
+        if hoje.month == 12:
+            ano, mes = hoje.year + 1, 1
+        else:
+            ano, mes = hoje.year, hoje.month + 1
+        try:
+            proximo = date(ano, mes, dia_vencimento)
+        except ValueError:
+            import calendar
+            ultimo = calendar.monthrange(ano, mes)[1]
+            proximo = date(ano, mes, min(dia_vencimento, ultimo))
+    return proximo
+
+
+def criar_cartao_credito(usuario_id: str, familia_id: str, nome: str,
+                         bandeira: str, dia_vencimento: int,
+                         dia_fechamento: int) -> CartaoCredito:
+    session = SessionLocal()
+    try:
+        cartao = CartaoCredito(
+            usuario_id=usuario_id,
+            familia_id=familia_id,
+            nome=nome.strip(),
+            bandeira=bandeira.strip(),
+            dia_vencimento=dia_vencimento,
+            dia_fechamento=dia_fechamento,
+        )
+        session.add(cartao)
+        session.commit()
+        return cartao
+    except Exception as e:
+        session.rollback()
+        raise RuntimeError(f"Erro ao criar cartão: {e}") from e
+    finally:
+        session.close()
+
+
+def listar_cartoes_familia(familia_id: str) -> list[CartaoCredito]:
+    session = SessionLocal()
+    try:
+        return session.query(CartaoCredito).filter_by(familia_id=familia_id).all()
+    except Exception as e:
+        raise RuntimeError(f"Erro ao listar cartões: {e}") from e
+    finally:
+        session.close()
+
+
+def editar_cartao_credito(cartao_id: str, nome: str, bandeira: str,
+                          dia_vencimento: int, dia_fechamento: int) -> CartaoCredito:
+    session = SessionLocal()
+    try:
+        cartao = session.query(CartaoCredito).filter_by(id=cartao_id).first()
+        if not cartao:
+            raise ValueError("Cartão não encontrado.")
+        cartao.nome = nome.strip()
+        cartao.bandeira = bandeira.strip()
+        cartao.dia_vencimento = dia_vencimento
+        cartao.dia_fechamento = dia_fechamento
+        session.commit()
+        return cartao
+    except Exception as e:
+        session.rollback()
+        raise RuntimeError(f"Erro ao editar cartão: {e}") from e
+    finally:
+        session.close()
+
+
+def deletar_cartao_credito(cartao_id: str) -> None:
+    session = SessionLocal()
+    try:
+        cartao = session.query(CartaoCredito).filter_by(id=cartao_id).first()
+        if not cartao:
+            raise ValueError("Cartão não encontrado.")
+        session.delete(cartao)
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise RuntimeError(f"Erro ao deletar cartão: {e}") from e
+    finally:
+        session.close()
+
+
+def criar_compra_cartao(usuario_id: str, familia_id: str, cartao_id: str,
+                        descricao: str, valor: float, categoria: str,
+                        data_compra: date) -> ParcelaDivida:
+    session = SessionLocal()
+    try:
+        cartao = session.query(CartaoCredito).filter_by(id=cartao_id).first()
+        if not cartao:
+            raise ValueError("Cartão não encontrado.")
+
+        vencimento = _proximo_vencimento(cartao.dia_vencimento)
+
+        plano = session.query(PlanoDivida).filter(
+            PlanoDivida.familia_id == familia_id,
+            PlanoDivida.credor == f"Cartão {cartao.nome}",
+        ).first()
+
+        if not plano:
+            plano = PlanoDivida(
+                usuario_id=usuario_id,
+                familia_id=familia_id,
+                credor=f"Cartão {cartao.nome}",
+                descricao="Fatura cartão de crédito",
+                valor_total=0,
+                numero_parcelas=0,
+            )
+            session.add(plano)
+            session.flush()
+
+        parcela = ParcelaDivida(
+            plano_divida_id=plano.id,
+            numero=plano.numero_parcelas + 1,
+            valor=valor,
+            data_vencimento=vencimento,
+        )
+        session.add(parcela)
+        plano.valor_total += valor
+        plano.numero_parcelas += 1
+        session.commit()
+        return parcela
+    except Exception as e:
+        session.rollback()
+        raise RuntimeError(f"Erro ao registrar compra no cartão: {e}") from e
     finally:
         session.close()

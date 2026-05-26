@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from string import Template
 from datetime import date
 
 from database import init_db
@@ -52,198 +53,369 @@ for key, default in [
 
 # ---------------------------------------------------------------------------
 # 2. CSS de temas
-# ---------------------------------------------------------------------------
-MODAL_CSS = """
-<style>
-    /* backdrop em tela cheia com blur */
-    div[data-testid="stDialog"] {
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        backdrop-filter: blur(6px) !important;
-        -webkit-backdrop-filter: blur(6px) !important;
-        animation: modalFadeIn 0.25s ease-out;
-        align-content: center !important;
-    }
-    /* card flutuante centralizado — altura exclusivamente do conteúdo */
-    div[data-testid="stDialog"] > div {
-        border-radius: 20px !important;
-        padding: 0.3rem 1.8rem 0.4rem !important;
-        box-shadow:
-            0 25px 60px rgba(0,0,0,0.35),
-            0 8px 20px rgba(0,0,0,0.15) !important;
-        animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-        width: auto !important;
-        min-width: 360px;
-        max-width: 560px;
-        min-height: 0 !important;
-        height: fit-content !important;
-        margin: 0 !important;
-    }
-    div[data-testid="stDialog"] > div > div {
-        border-radius: 20px !important;
-        padding: 0 !important;
-        min-height: 0 !important;
-        height: fit-content !important;
-    }
-    div[data-testid="stDialog"] div[data-testid="stVerticalBlockBorderSeparator"] {
-        display: none !important;
-    }
-    div[data-testid="stDialog"] [data-testid="column"] {
-        gap: 0 !important;
-    }
-    div[data-testid="stDialog"] [data-testid="stForm"] > div > div {
-        gap: 0.25rem !important;
-        min-height: 0 !important;
-    }
-    div[data-testid="stDialog"] [data-testid="stForm"] {
-        min-height: 0 !important;
-    }
-    div[data-testid="stDialog"] h2, div[data-testid="stDialog"] h3 {
-        margin: 0 0 0.15rem 0 !important;
-        padding: 0 !important;
-    }
-    div[data-testid="stDialog"] .row-widget {
-        margin-bottom: 0 !important;
-    }
-    div[data-testid="stDialog"] label {
-        margin-bottom: 0 !important;
-        padding-bottom: 0 !important;
-    }
-    div[data-testid="stDialog"] [data-testid="stForm"] [data-testid="stVerticalBlock"] {
-        gap: 0.2rem !important;
-    }
-    div[data-testid="stDialog"] hr {
-        margin-top: 0.3rem !important;
-        margin-bottom: 0.3rem !important;
-    }
-    div[data-testid="stDialog"] .stAlert {
-        padding: 0.4rem 0.8rem !important;
-        margin-bottom: 0.3rem !important;
-    }
-    div[data-testid="stDialog"] .stButton {
-        margin-bottom: 0 !important;
-    }
-    div[data-testid="stDialog"] .stButton button {
-        padding: 0.15rem 0 !important;
-        min-height: 0 !important;
-        line-height: 1.3 !important;
-    }
-    div[data-testid="stDialog"] div[data-testid="stForm"] > div > div > div:last-child {
-        margin-bottom: 0 !important;
-    }
-    div[data-testid="stDialog"] thead tr th:first-child {
-        border-radius: 14px 0 0 0;
-    }
-    div[data-testid="stDialog"] thead tr th:last-child {
-        border-radius: 0 14px 0 0;
-    }
-    @keyframes modalFadeIn {
-        from { opacity: 0; }
-        to   { opacity: 1; }
-    }
-    @keyframes modalSlideUp {
-        from { opacity: 0; transform: translateY(40px) scale(0.96); }
-        to   { opacity: 1; transform: translateY(0) scale(1); }
-    }
-</style>
-"""
+CSS_TEMPLATE = Template("""<style>
+body {
+  --bg-body: $bg_body;
+  --bg-sidebar: $bg_sidebar;
+  --bg-card: $bg_card;
+  --bg-modal-card: $bg_modal_card;
+  --bg-input: $bg_input;
+  --bg-input-disabled: $bg_input_disabled;
+  --bg-popover: $bg_popover;
+  --bg-sidebar-btn-hover: $bg_sidebar_btn_hover;
+  --bg-metric: $bg_metric;
+  --text-body: $text_body;
+  --text-secondary: $text_secondary;
+  --text-on-primary: $text_on_primary;
+  --text-input: $text_input;
+  --text-popover: $text_popover;
+  --text-modal-label: $text_modal_label;
+  --border-input: $border_input;
+  --border-light: $border_light;
+  --border-heavy: $border_heavy;
+  --btn-primary-bg: $btn_primary_bg;
+  --btn-primary-hover: $btn_primary_hover;
+  --btn-primary-text: $btn_primary_text;
+  --btn-sidebar-text: $btn_sidebar_text;
+  --alert-bg: $alert_bg;
+  --alert-text: $alert_text;
+  --alert-border: $alert_border;
+  --modal-overlay: $modal_overlay;
+  --modal-shadow: $modal_shadow;
+}
 
-DARK_CSS = MODAL_CSS + """
-<style>
-    .stApp      { background-color: #0e1117; color: #f0f0f0; }
-    section[data-testid="stSidebar"] { background-color: #1b1f2a; }
-    h1, h2, h3, h4, h5, h6, p, li, label, span, div {
-        color: #f0f0f0 !important;
-    }
-    .stTextInput>div>div>input,
-    .stNumberInput>div>div>input,
-    .stDateInput>div>div>input,
-    .stSelectbox>div>div>div { background-color: #262730; color: #f0f0f0; border-color: #3c3c3c; }
-    .st-bb { background-color: #262730 !important; }
-    .stButton>button { background-color: #ff4b4b; color: #fff; border: none; }
-    .stAlert { background-color: #3d1f1f !important; border: 1px solid #ff4b4b !important; color: #ffcccc !important; }
-    div[data-testid="stMetric"] { background-color: #262730; padding: 12px; border-radius: 8px; }
-    .block-container { padding-top: 2rem; }
-    h1 { border-bottom: 1px solid #3c3c3c; padding-bottom: 0.5rem; }
-    section[data-testid="stSidebar"] hr { border-color: #3c3c3c; }
-    section[data-testid="stSidebar"] .stButton>button { width: 100%; text-align: left; background-color: transparent; color: #f0f0f0 !important; }
-    section[data-testid="stSidebar"] .stButton>button:hover { background-color: #262730; }
-    div[data-testid="stDialog"] > div {
-        background-color: #1b1f2a !important;
-        border: 1px solid #333 !important;
-    }
-    div[data-testid="stDialog"] input,
-    div[data-testid="stDialog"] select,
-    div[data-testid="stDialog"] textarea {
-        background-color: #262730 !important;
-        color: #f0f0f0 !important;
-        border-color: #3c3c3c !important;
-    }
-    div[data-testid="stDialog"] .stSelectbox div[data-baseweb="select"] > div {
-        background-color: #262730 !important;
-    }
-    div[data-testid="stDialog"] [data-baseweb="popover"] li,
-    div[data-testid="stDialog"] [data-baseweb="popover"] div {
-        background-color: #262730 !important;
-        color: #f0f0f0 !important;
-    }
-    div[data-testid="stDialog"] label,
-    div[data-testid="stDialog"] .stCaption {
-        color: #cccccc !important;
-    }
-</style>
-"""
+/* ------ Global ------ */
+.stApp      { background-color: var(--bg-body); color: var(--text-body); }
+section[data-testid="stSidebar"] { background-color: var(--bg-sidebar); }
+h1, h2, h3, h4, h5, h6, p, li, label, span, div {
+    color: var(--text-body) !important;
+}
+.block-container { padding-top: 2rem; }
+h1 { border-bottom: 1px solid var(--border-light); padding-bottom: 0.5rem; }
+.st-bb { background-color: var(--bg-card) !important; }
 
-LIGHT_CSS = MODAL_CSS + """
-<style>
-    .stApp      { background-color: #ffffff; color: #111111; }
-    section[data-testid="stSidebar"] { background-color: #f0f2f6; }
-    h1, h2, h3, h4, h5, h6, p, li, label, span, div {
-        color: #111111 !important;
-    }
-    .stTextInput>div>div>input,
-    .stNumberInput>div>div>input,
-    .stDateInput>div>div>input,
-    .stSelectbox>div>div>div { background-color: #ffffff; color: #111111; border-color: #d0d0d0; }
-    .st-bb { background-color: #ffffff !important; }
-    .stButton>button { background-color: #ff4b4b; color: #fff; border: none; }
-    .stAlert { background-color: #fff0f0 !important; border: 1px solid #ff4b4b !important; color: #cc0000 !important; }
-    div[data-testid="stMetric"] { background-color: #f8f9fa; padding: 12px; border-radius: 8px; border: 1px solid #e0e0e0; }
-    .block-container { padding-top: 2rem; }
-    h1 { border-bottom: 1px solid #e0e0e0; padding-bottom: 0.5rem; }
-    section[data-testid="stSidebar"] hr { border-color: #d0d0d0; }
-    section[data-testid="stSidebar"] .stButton>button { width: 100%; text-align: left; background-color: transparent; color: #111111 !important; }
-    section[data-testid="stSidebar"] .stButton>button:hover { background-color: #e8eaf0; }
-    div[data-testid="stDialog"] > div {
-        background-color: #ffffff !important;
-        border: 1px solid rgba(0,0,0,0.08) !important;
-    }
-    div[data-testid="stDialog"] input,
-    div[data-testid="stDialog"] select,
-    div[data-testid="stDialog"] textarea {
-        background-color: #ffffff !important;
-        color: #111111 !important;
-        border-color: #d0d0d0 !important;
-    }
-    div[data-testid="stDialog"] .stSelectbox div[data-baseweb="select"] > div {
-        background-color: #ffffff !important;
-    }
-    div[data-testid="stDialog"] [data-baseweb="popover"] li,
-    div[data-testid="stDialog"] [data-baseweb="popover"] div {
-        background-color: #ffffff !important;
-        color: #111111 !important;
-    }
-    div[data-testid="stDialog"] label,
-    div[data-testid="stDialog"] .stCaption {
-        color: #555555 !important;
-    }
-</style>
-"""
+/* ------ Inputs ------ */
+.stTextInput>div>div>input,
+.stNumberInput>div>div>input,
+.stDateInput>div>div>input,
+.stSelectbox>div>div>div {
+    background-color: var(--bg-input);
+    color: var(--text-input);
+    border-color: var(--border-input);
+}
+.stNumberInput button {
+    background-color: var(--bg-input) !important;
+    color: var(--text-input) !important;
+    border-color: var(--border-input) !important;
+}
+.stNumberInput button:hover {
+    background-color: var(--bg-card) !important;
+    color: var(--text-input) !important;
+}
+.stSelectbox svg,
+.stSelectbox div[data-baseweb="select"] svg {
+    fill: var(--text-input) !important;
+    color: var(--text-input) !important;
+}
+
+/* ------ Buttons ------ */
+.stButton>button { background-color: var(--btn-primary-bg); color: var(--btn-primary-text) !important; border: none; }
+.stButton>button:hover { background-color: var(--btn-primary-hover) !important; color: var(--btn-primary-text) !important; }
+html body div[data-testid="stDialog"] .stButton button,
+html body div[data-testid="stDialog"] button[kind="formSubmit"] {
+    color: var(--btn-primary-text) !important;
+}
+button[kind="formSubmit"] {
+    background-color: var(--btn-primary-bg) !important;
+    color: var(--btn-primary-text) !important;
+    border: none !important;
+}
+button[kind="formSubmit"]:hover {
+    background-color: var(--btn-primary-hover) !important;
+    color: var(--btn-primary-text) !important;
+}
+button[aria-label="Toggle password visibility"],
+button[data-testid="stPasswordToggle"] {
+    color: var(--text-input) !important;
+    background: transparent !important;
+    border: none !important;
+}
+button[aria-label="Toggle password visibility"] svg,
+button[data-testid="stPasswordToggle"] svg {
+    fill: var(--text-input) !important;
+    color: var(--text-input) !important;
+}
+section[data-testid="stSidebar"] .stButton>button {
+    width: 100%; text-align: left;
+    background-color: transparent;
+    color: var(--btn-sidebar-text) !important;
+}
+section[data-testid="stSidebar"] .stButton>button:hover { background-color: var(--bg-sidebar-btn-hover); }
+section[data-testid="stSidebar"] hr { border-color: var(--border-light); }
+
+/* ------ Alertas ------ */
+.stAlert { background-color: var(--alert-bg) !important; border: 1px solid var(--alert-border) !important; color: var(--alert-text) !important; }
+
+/* ------ Metric Cards ------ */
+div[data-testid="stMetric"] {
+    background-color: var(--bg-metric);
+    padding: 12px;
+    border-radius: 8px;
+}
+
+/* ------ Tabelas / DataFrames ------ */
+div[data-testid="stTable"] th,
+div[data-testid="stTable"] td,
+div[data-testid="stDataFrame"] th,
+div[data-testid="stDataFrame"] td,
+.stDataFrame th, .stDataFrame td,
+.stTable th, .stTable td {
+    background-color: var(--bg-card) !important;
+    color: var(--text-body) !important;
+    border-color: var(--border-light) !important;
+}
+
+/* ------ Inputs desabilitados ------ */
+input:disabled, select:disabled, textarea:disabled {
+    background-color: var(--bg-input-disabled) !important;
+}
+
+/* ========== MODAIS ========== */
+
+/* backdrop overlay */
+html body div[data-testid="stDialog"] {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    backdrop-filter: blur(6px) !important;
+    -webkit-backdrop-filter: blur(6px) !important;
+    animation: modalFadeIn 0.25s ease-out;
+    align-content: center !important;
+    background: var(--modal-overlay) !important;
+}
+
+/* card principal do modal */
+html body div[data-testid="stDialog"] > div:first-child {
+    border-radius: 20px !important;
+    padding: 0.3rem 1.8rem 0.4rem !important;
+    box-shadow: var(--modal-shadow) !important;
+    animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    width: auto !important;
+    min-width: 360px;
+    max-width: 560px;
+    min-height: 0 !important;
+    height: fit-content !important;
+    margin: 0 !important;
+    background-color: var(--bg-modal-card) !important;
+    border: 1px solid var(--border-heavy) !important;
+}
+
+/* força fundo em camadas internas */
+html body div[data-testid="stDialog"] > div,
+html body div[data-testid="stDialog"] > div > div,
+html body div[data-testid="stDialog"] > div > div > div {
+    background-color: var(--bg-modal-card) !important;
+}
+
+/* texto do modal */
+html body div[data-testid="stDialog"] > div,
+html body div[data-testid="stDialog"] > div > div,
+html body div[data-testid="stDialog"] > div > div > div {
+    color: var(--text-body) !important;
+}
+html body div[data-testid="stDialog"] label,
+html body div[data-testid="stDialog"] .stCaption,
+html body div[data-testid="stDialog"] .st-emotion-caption {
+    color: var(--text-modal-label) !important;
+}
+html body div[data-testid="stDialog"] h1,
+html body div[data-testid="stDialog"] h2,
+html body div[data-testid="stDialog"] h3,
+html body div[data-testid="stDialog"] h4,
+html body div[data-testid="stDialog"] .stMarkdown {
+    color: var(--text-body) !important;
+}
+
+/* demais regras do modal */
+div[data-testid="stDialog"] div[data-testid="stVerticalBlockBorderSeparator"] {
+    display: none !important;
+}
+div[data-testid="stDialog"] [data-testid="column"] {
+    gap: 0 !important;
+}
+div[data-testid="stDialog"] [data-testid="stForm"] > div > div {
+    gap: 0.25rem !important;
+    min-height: 0 !important;
+}
+div[data-testid="stDialog"] [data-testid="stForm"] {
+    min-height: 0 !important;
+    background: transparent !important;
+}
+div[data-testid="stDialog"] h2, div[data-testid="stDialog"] h3 {
+    margin: 0 0 0.15rem 0 !important;
+    padding: 0 !important;
+}
+div[data-testid="stDialog"] .row-widget {
+    margin-bottom: 0 !important;
+}
+div[data-testid="stDialog"] label {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+}
+div[data-testid="stDialog"] [data-testid="stForm"] [data-testid="stVerticalBlock"] {
+    gap: 0.2rem !important;
+}
+div[data-testid="stDialog"] hr {
+    margin-top: 0.3rem !important;
+    margin-bottom: 0.3rem !important;
+    border-color: var(--border-light) !important;
+}
+div[data-testid="stDialog"] .stAlert {
+    padding: 0.4rem 0.8rem !important;
+    margin-bottom: 0.3rem !important;
+}
+div[data-testid="stDialog"] .stButton {
+    margin-bottom: 0 !important;
+}
+div[data-testid="stDialog"] .stButton button {
+    padding: 0.15rem 0 !important;
+    min-height: 0 !important;
+    line-height: 1.3 !important;
+}
+div[data-testid="stDialog"] div[data-testid="stForm"] > div > div > div:last-child {
+    margin-bottom: 0 !important;
+}
+div[data-testid="stDialog"] thead tr th:first-child {
+    border-radius: 14px 0 0 0;
+}
+div[data-testid="stDialog"] thead tr th:last-child {
+    border-radius: 0 14px 0 0;
+}
+div[data-testid="stDialog"] input,
+div[data-testid="stDialog"] select,
+div[data-testid="stDialog"] textarea {
+    background-color: var(--bg-input) !important;
+    color: var(--text-input) !important;
+    border-color: var(--border-input) !important;
+}
+div[data-testid="stDialog"] .stSelectbox div[data-baseweb="select"] > div {
+    background-color: var(--bg-input) !important;
+    border-color: var(--border-input) !important;
+    color: var(--text-input) !important;
+}
+div[data-testid="stDialog"] .stNumberInput button {
+    background-color: var(--bg-input) !important;
+    color: var(--text-input) !important;
+    border-color: var(--border-input) !important;
+}
+div[data-testid="stDialog"] .stNumberInput button:hover {
+    background-color: var(--bg-card) !important;
+}
+div[data-testid="stDialog"] .stSelectbox svg,
+div[data-testid="stDialog"] .stSelectbox div[data-baseweb="select"] svg {
+    fill: var(--text-input) !important;
+    color: var(--text-input) !important;
+}
+div[data-testid="stDialog"] [data-baseweb="popover"] li,
+div[data-testid="stDialog"] [data-baseweb="popover"] div {
+    background-color: var(--bg-popover) !important;
+    color: var(--text-popover) !important;
+}
+div[data-testid="stDialog"] [data-baseweb="popover"] li:hover {
+    background-color: var(--bg-sidebar-btn-hover) !important;
+}
+div[data-testid="stDialog"] button[aria-label="Toggle password visibility"],
+div[data-testid="stDialog"] button[data-testid="stPasswordToggle"] {
+    color: var(--text-input) !important;
+    background: transparent !important;
+    border: none !important;
+}
+div[data-testid="stDialog"] button[aria-label="Toggle password visibility"] svg,
+div[data-testid="stDialog"] button[data-testid="stPasswordToggle"] svg {
+    fill: var(--text-input) !important;
+    color: var(--text-input) !important;
+}
+
+/* ------ Scrollbar ------ */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-body); }
+::-webkit-scrollbar-thumb { background: var(--border-heavy); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@keyframes modalSlideUp {
+    from { opacity: 0; transform: translateY(40px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+</style>""")
+
+TEMA_LIGHT = dict(
+    bg_body="#ffffff",
+    bg_sidebar="#f0f2f6",
+    bg_card="#ffffff",
+    bg_modal_card="#ffffff",
+    bg_input="#ffffff",
+    bg_input_disabled="#f3f4f6",
+    bg_popover="#ffffff",
+    bg_sidebar_btn_hover="#e8eaf0",
+    bg_metric="#f8f9fa",
+    text_body="#111111",
+    text_secondary="#555555",
+    text_on_primary="#ffffff",
+    text_input="#111111",
+    text_popover="#111111",
+    text_modal_label="#555555",
+    border_input="#d0d0d0",
+    border_light="#e0e0e0",
+    border_heavy="#cccccc",
+    btn_primary_bg="#1677ff",
+    btn_primary_hover="#4096ff",
+    btn_primary_text="#ffffff",
+    btn_sidebar_text="#111111",
+    alert_bg="#fff0f0",
+    alert_text="#cc0000",
+    alert_border="#ff4b4b",
+    modal_overlay="rgba(0,0,0,0.25)",
+    modal_shadow="0 25px 60px rgba(0,0,0,0.35), 0 8px 20px rgba(0,0,0,0.15)",
+)
+
+TEMA_DARK = dict(
+    bg_body="#0e1117",
+    bg_sidebar="#1b1f2a",
+    bg_card="#262730",
+    bg_modal_card="#1b1f2a",
+    bg_input="#262730",
+    bg_input_disabled="#1e1e1e",
+    bg_popover="#262730",
+    bg_sidebar_btn_hover="#262730",
+    bg_metric="#262730",
+    text_body="#f0f0f0",
+    text_secondary="#cccccc",
+    text_on_primary="#ffffff",
+    text_input="#f0f0f0",
+    text_popover="#f0f0f0",
+    text_modal_label="#cccccc",
+    border_input="#3c3c3c",
+    border_light="#3c3c3c",
+    border_heavy="#444444",
+    btn_primary_bg="#ff4b4b",
+    btn_primary_hover="#ff6b6b",
+    btn_primary_text="#ffffff",
+    btn_sidebar_text="#f0f0f0",
+    alert_bg="#3d1f1f",
+    alert_text="#ffcccc",
+    alert_border="#ff4b4b",
+    modal_overlay="rgba(0,0,0,0.55)",
+    modal_shadow="0 25px 60px rgba(0,0,0,0.5), 0 8px 20px rgba(0,0,0,0.3)",
+)
 
 
 def aplicar_tema():
-    css = DARK_CSS if st.session_state["dark_mode"] else LIGHT_CSS
+    vars = TEMA_DARK if st.session_state["dark_mode"] else TEMA_LIGHT
+    css = CSS_TEMPLATE.substitute(**vars)
     st.markdown(css, unsafe_allow_html=True)
 
 

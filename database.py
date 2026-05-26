@@ -20,8 +20,24 @@ Base = declarative_base()
 def init_db():
     try:
         Base.metadata.create_all(bind=engine)
+        _migrar_colunas(engine)
     except Exception as e:
         raise RuntimeError(f"Erro ao inicializar banco de dados: {e}") from e
+
+
+def _migrar_colunas(engine):
+    from sqlalchemy import text
+    migrations = [
+        "ALTER TABLE transacoes ADD COLUMN forma_pagamento VARCHAR(20)",
+        "ALTER TABLE transacoes ADD COLUMN cartao_credito_id VARCHAR(36)",
+    ]
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                conn.rollback()
 
 
 def get_session():

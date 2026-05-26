@@ -38,6 +38,22 @@ class Usuario(Base):
         return f"<Usuario {self.nome}>"
 
 
+class CartaoCredito(Base):
+    __tablename__ = "cartoes_credito"
+
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    usuario_id = Column(String(36), ForeignKey("usuarios.id"), nullable=False, index=True)
+    familia_id = Column(String(36), ForeignKey("familias.id"), nullable=False, index=True)
+    nome = Column(String(100), nullable=False)
+    bandeira = Column(String(50), nullable=False)
+    dia_vencimento = Column(Integer, nullable=False)
+    dia_fechamento = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Cartao {self.nome}>"
+
+
 class Transacao(Base):
     __tablename__ = "transacoes"
 
@@ -49,6 +65,8 @@ class Transacao(Base):
     valor = Column(Float, nullable=False)
     data = Column(Date, default=date.today, index=True)
     descricao = Column(String(255), default="")
+    forma_pagamento = Column(String(20), nullable=True)
+    cartao_credito_id = Column(String(36), ForeignKey("cartoes_credito.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def __repr__(self):
